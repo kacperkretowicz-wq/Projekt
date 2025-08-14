@@ -1,0 +1,33 @@
+
+{
+  "productName": "BOM OS",
+  "version": "0.1.0",
+  "identifier": "com.example.bom-os",
+  "build": {
+    "beforeDevCommand": "",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "BOM OS - AI Dashboard", "width": 1200, "height": 800 }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  },
+  "plugins": {},
+  "allowlist": {
+    "shell": {
+      "all": false,
+      "execute": true,
+      "open": true,
+      "scope": [
+        { "name": "flask_sidecar", "cmd": "flask_sidecar", "args": ".*" },
+        { "name": "python", "cmd": "python", "args": ".*" }
+      ]
+    }
+  }
+}

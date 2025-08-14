@@ -1,0 +1,108 @@
+/* General Window Styling */
+QMainWindow {
+    background-color: qradialgradient(cx: 0.5, cy: 0.5, radius: 1, fx: 0.5, fy: 0.5, stop: 0 #003566, stop: 1 #000814);
+}
+
+QWidget {
+    color: #E0E0E0; /* A light grey for text */
+    font-family: "Segoe UI", Arial, sans-serif;
+    background-color: transparent;
+}
+
+/* Custom property to identify panels for glass effect */
+.glass-panel {
+    background-color: rgba(10, 34, 57, 0.75); /* Semi-transparent dark blue */
+    border-radius: 15px;
+    border: 1px solid rgba(0, 229, 255, 0.5); /* Semi-transparent cyan border */
+}
+
+/* Label Styling */
+QLabel {
+    font-size: 16px;
+    color: #F0F0F0;
+}
+
+/* Button Styling */
+QPushButton {
+    background-color: #0A2239; /* A slightly lighter dark blue */
+    color: #00E5FF; /* Bright cyan for text */
+    border: 2px solid #00E5FF;
+    padding: 8px 16px;
+    border-radius: 15px; /* Rounded corners */
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+QPushButton:hover {
+    background-color: #00E5FF; /* Invert colors on hover */
+    color: #001220;
+}
+
+QPushButton:pressed {
+    background-color: #00B8D4; /* A slightly darker cyan for pressed state */
+    color: #001220;
+}
+
+/* Table View Styling */
+QTableView {
+    background-color: #0A2239;
+    border: 1px solid #00E5FF;
+    border-radius: 8px;
+    gridline-color: #1A3A53;
+}
+
+QTableView::item {
+    padding: 8px;
+    border-bottom: 1px solid #1A3A53;
+}
+
+QTableView::item:selected {
+    background-color: rgba(0, 229, 255, 0.3); /* Semi-transparent cyan for selection */
+}
+
+/* Header Styling for Table */
+QHeaderView::section {
+    background-color: #0A2239;
+    color: #00E5FF;
+    padding: 8px;
+    border: none;
+    border-bottom: 2px solid #00E5FF;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* ScrollBar Styling */
+QScrollBar:vertical {
+    background: #0A2239;
+    width: 12px;
+    margin: 0px 0px 0px 0px;
+    border: 1px solid #00E5FF;
+    border-radius: 6px;
+}
+QScrollBar::handle:vertical {
+    background: #00E5FF;
+    min-height: 20px;
+    border-radius: 5px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+    background: none;
+}
+
+QScrollBar:horizontal {
+    background: #0A2239;
+    height: 12px;
+    margin: 0px 0px 0px 0px;
+    border: 1px solid #00E5FF;
+    border-radius: 6px;
+}
+QScrollBar::handle:horizontal {
+    background: #00E5FF;
+    min-width: 20px;
+    border-radius: 5px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+    background: none;
+}
