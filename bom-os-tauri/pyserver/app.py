@@ -1,185 +1,119 @@
+import React, { useState } from 'react'
 
-import os
-import json
-import traceback
-from typing import Optional, Tuple, Dict, Any
+type TableRow = Record<string, any>
 
-from flask import Flask, request, jsonify
-import pandas as pd
-
-# --- Lazy/forgiving imports of your modules ---
-try:
-    import ai_logic  # your module
-except Exception as e:
-    ai_logic = None
-
-try:
-    import forecasting_logic  # your module
-except Exception as e:
-    forecasting_logic = None
-
-try:
-    from common import data_processing  # your module
-except Exception as e:
-    data_processing = None
-
-app = Flask(__name__)
-
-MODEL_STATE: Dict[str, Any] = {
-    "df": pd.DataFrame(),
-    "monthly_sales_df": pd.DataFrame(),
-    "ai_model": None,
-    "ai_encoder": None,
-    "ai_importances": None,
+async function postJSON(url: string, payload: any) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
 }
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+export default function App() {
+  const [rows, setRows] = useState<TableRow[]>([])
+  const [status, setStatus] = useState<string>('Gotowy')
+  const [aiInfo, setAiInfo] = useState<any>(null)
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
 
-def error_json(msg: str, code: int = 400):
-    return jsonify({"error": msg}), code
+  const handleProcess = async () => {
+    setStatus('Przetwarzanie...')
+    try {
+      const data = await postJSON('http://127.0.0.1:5005/process', {
+        stany: null, bomy: null, minimum: null, sprzedaz: null
+      })
+      setRows(data.rows || [])
+      setSelectedRowIndex(null)
+      setStatus('OK')
+    } catch (e:any) {
+      setStatus(e.message)
+    }
+  }
 
-@app.post("/process")
-def process():
-    try:
-        payload = request.get_json(silent=True) or {}
-        stany = payload.get("stany")
-        bomy = payload.get("bomy")
-        minimum = payload.get("minimum")
-        sprzedaz = payload.get("sprzedaz")
+  const handleTrain = async () => {
+    setStatus('Trenowanie...')
+    try {
+      const data = await postJSON('http://127.0.0.1:5005/train', {})
+      setAiInfo(data)
+      setStatus('Model zaktualizowany')
+    } catch (e:any) {
+      setStatus(e.message)
+    }
+  }
 
-        if data_processing:
-            df, monthly = data_processing.process_data_files(
-                stany=stany, bomy=bomy, minimum=minimum, sprzedaz=sprzedaz
-            )
-        else:
-            # fallback – sample frame
-            df = pd.DataFrame([
-                {"indeks": "SKU-1", "stan": 42, "nazwa": "Przykład"},
-                {"indeks": "SKU-2", "stan": 5, "nazwa": "Przykład 2"}
-            ])
-            monthly = pd.DataFrame({
-                "indeks": ["SKU-1"]*6,
-                "date": pd.date_range("2024-01-01", periods=6, freq="MS"),
-                "sales": [10, 12, 11, 15, 14, 18]
-            })
+  const handlePredict = async () => {
+    setStatus('Predykcja...')
+    try {
+      const data = await postJSON('http://127.0.0.1:5005/predict', { rows })
+      setRows(data.rows || rows)
+      setAiInfo({ importances: data.importances || null })
+      setStatus('Gotowe')
+    } catch (e:any) {
+      setStatus(e.message)
+    }
+  }
 
-        MODEL_STATE["df"] = df
-        MODEL_STATE["monthly_sales_df"] = monthly
+  const handleForecast = async () => {
+    if (selectedRowIndex === null) {
+      setStatus('Błąd: Proszę zaznaczyć wiersz w tabeli, aby wygenerować prognozę.')
+      return
+    }
+    setStatus('Prognozowanie...')
+    try {
+      const selectedRow = rows[selectedRowIndex]
+      if (!selectedRow) throw new Error('Brak danych w zaznaczonym wierszu')
+      const indeks = selectedRow?.indeks
+      const stan = selectedRow?.stan ?? 0
+      const data = await postJSON('http://127.0.0.1:5005/forecast', { indeks, stan })
+      setAiInfo({ forecast: data })
+      setStatus('Gotowe')
+    } catch (e:any) {
+      setStatus(e.message)
+    }
+  }
 
-        rows = df.to_dict(orient="records")
-        return jsonify({"rows": rows})
-    except Exception as e:
-        return error_json(f"process failed: {e}\n{traceback.format_exc()}", 500)
+  return (
+    <div style={{ padding: 16, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <h1>BOM OS – Dashboard (Tauri + React + Flask)</h1>
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        <button onClick={handleProcess}>1. Przetwórz</button>
+        <button onClick={handleTrain}>2. Trenuj AI</button>
+        <button onClick={handlePredict}>3. Predykcja</button>
+        <button onClick={handleForecast}>4. Prognoza</button>
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <strong>Status:</strong> {status}
+      </div>
 
-@app.post("/train")
-def train():
-    try:
-        df = MODEL_STATE.get("df", pd.DataFrame())
-        if df.empty:
-            return error_json("Brak danych – wywołaj /process najpierw.", 400)
+      <div style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #ddd' }}>
+        <table cellPadding={6} style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ textAlign: 'left', background: '#f6f8fa' }}>
+              {rows[0] && Object.keys(rows[0]).map(key => <th key={key} style={{ padding: '8px' }}>{key}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr
+                key={i}
+                onClick={() => setSelectedRowIndex(i)}
+                style={{
+                  cursor: 'pointer',
+                  backgroundColor: selectedRowIndex === i ? '#e0f7fa' : 'transparent'
+                }}
+              >
+                {Object.keys(rows[0] || {}).map(k => <td key={k + i} style={{ padding: '8px', borderBottom: '1px solid #eee' }}>{String(r[k])}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-        if ai_logic:
-            model_data = ai_logic.train_and_save_model(df, "feedback_log.csv")
-            MODEL_STATE["ai_model"] = model_data.get("model")
-            MODEL_STATE["ai_encoder"] = model_data.get("encoder")
-            MODEL_STATE["ai_importances"] = model_data.get("importances")
-            imp = MODEL_STATE["ai_importances"]
-            if hasattr(imp, "to_dict"):
-                imp = imp.to_dict(orient="records")
-            return jsonify({"message": "model trained", "importances": imp})
-        else:
-            # fallback
-            MODEL_STATE["ai_model"] = "stub"
-            MODEL_STATE["ai_encoder"] = "stub"
-            MODEL_STATE["ai_importances"] = pd.DataFrame([{"feature":"stan","importance":1.0}])
-            return jsonify({"message": "stub model trained", "importances": [{"feature":"stan","importance":1.0}]})
-
-    except Exception as e:
-        return error_json(f"train failed: {e}\n{traceback.format_exc()}", 500)
-
-@app.post("/predict")
-def predict():
-    try:
-        payload = request.get_json(silent=True) or {}
-        rows = payload.get("rows")
-        if rows is not None:
-            df = pd.DataFrame(rows)
-            MODEL_STATE["df"] = df
-        else:
-            df = MODEL_STATE.get("df", pd.DataFrame())
-
-        if df.empty:
-            return error_json("Brak danych do predykcji.", 400)
-
-        if ai_logic and MODEL_STATE["ai_model"] is not None and MODEL_STATE["ai_encoder"] is not None:
-            preds = ai_logic.predict_with_model(MODEL_STATE["ai_model"], MODEL_STATE["ai_encoder"], df)
-            df = df.copy()
-            df["ai_alert"] = preds
-            MODEL_STATE["df"] = df
-            imp = MODEL_STATE.get("ai_importances")
-            if hasattr(imp, "to_dict"):
-                imp = imp.to_dict(orient="records")
-            return jsonify({"rows": df.to_dict(orient="records"), "importances": imp})
-        else:
-            df = df.copy()
-            df["ai_alert"] = (df["stan"] <= 5) if "stan" in df.columns else False
-            MODEL_STATE["df"] = df
-            return jsonify({"rows": df.to_dict(orient="records"), "importances": [{"feature":"stan","importance":1.0}]})
-
-    except Exception as e:
-        return error_json(f"predict failed: {e}\n{traceback.format_exc()}", 500)
-
-@app.post("/forecast")
-def forecast():
-    try:
-        payload = request.get_json(silent=True) or {}
-        indeks = payload.get("indeks")
-        stan = payload.get("stan", 0)
-        monthly = MODEL_STATE.get("monthly_sales_df", pd.DataFrame())
-        if not indeks:
-            return error_json("Wymagany 'indeks'.", 400)
-
-        product_sales = monthly[monthly.get("indeks") == indeks] if not monthly.empty else pd.DataFrame()
-        if product_sales.empty:
-            # fallback dummy
-            dates = pd.date_range("2024-01-01", periods=12, freq="MS")
-            sales = pd.Series(range(10, 22))
-            product_sales = pd.DataFrame({"date": dates, "sales": sales, "indeks": indeks})
-
-        if forecasting_logic:
-            sales_series = product_sales.set_index("date")["sales"]
-            model = forecasting_logic.load_forecast_model(indeks) or forecasting_logic.train_and_save_forecast_model(sales_series, indeks)
-            forecast_df, stockout_date = forecasting_logic.generate_forecast(model, stan)
-            out = {
-                "forecast": forecast_df.reset_index().to_dict(orient="records"),
-                "stockout_date": str(stockout_date) if stockout_date is not None else None
-            }
-            return jsonify(out)
-        else:
-            # simple linear projection
-            df = product_sales.sort_values("date").copy()
-            df["forecast"] = df["sales"].rolling(3, min_periods=1).mean()
-            stockout_date = None
-            return jsonify({"forecast": df.to_dict(orient="records"), "stockout_date": stockout_date})
-
-    except Exception as e:
-        return error_json(f"forecast failed: {e}\n{traceback.format_exc()}", 500)
-
-@app.post("/export")
-def export():
-    try:
-        payload = request.get_json(silent=True) or {}
-        path = payload.get("path", "export.csv")
-        df = MODEL_STATE.get("df", pd.DataFrame())
-        if df.empty:
-            return error_json("Brak danych do eksportu.", 400)
-        df.to_csv(path, index=False, encoding="utf-8-sig")
-        return jsonify({"message": "saved", "path": os.path.abspath(path)})
-    except Exception as e:
-        return error_json(f"export failed: {e}\n{traceback.format_exc()}", 500)
-
-if __name__ == "__main__":
-    port = int(os.environ.get("FLASK_PORT", "5005"))
-    app.run(host="127.0.0.1", port=port, debug=True)
+      <pre style={{ background:'#f6f8fa', padding:12, borderRadius:8, marginTop: 12 }}>
+        {JSON.stringify(aiInfo, null, 2)}
+      </pre>
+    </div>
+  )
+}
