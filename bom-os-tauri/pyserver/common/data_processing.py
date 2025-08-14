@@ -1,11 +1,12 @@
 import pandas as pd
 import os
+import re # Import modułu do wyrażeń regularnych
 import numpy as np
 from rapidfuzz import process, fuzz
 
 def fuzzy_match(new_names, known_names, threshold=80):
     """
-    Finds the best match for each name in new_names from a list of known_names.
+    Znajduje najlepsze dopasowanie dla każdej nazwy w new_names z listy known_names.
     """
     mapping = {}
     for name in new_names:
@@ -14,130 +15,118 @@ def fuzzy_match(new_names, known_names, threshold=80):
             mapping[name] = match[0]
     return mapping
 
-def process_data_files(stany, bomy_path, minimum_path, sprzedaz_path):
+def process_data_files(stany_path, bomy_path, minimum_path, sprzedaz_path):
     """
-    Loads and processes data from four CSV files to create a unified DataFrame.
+    Wczytuje i przetwarza dane z plików CSV, tworząc ujednoliconą ramkę danych.
     """
-    # Define expected columns for empty dataframes
-    stany_cols = ["Indeks", "Name", "Ilość na stanie"]
-    bomy_cols = ["Indeks", "Nazwa", "Ilość"]
-    minimum_cols = ["Indeks", "Minimum"]
+    # ZMIANA: Usunięto definicje pustych kolumn, logika została ulepszona
     
-    # Load dataframes, creating empty ones if files don't exist
-    if stany_path and os.path.exists(stany_path):
-        stany = pd.read_csv(stany_path)
-    else:
-        stany = pd.DataFrame(columns=stany_cols)
-
-    if bomy_path and os.path.exists(bomy_path):
-        bomy = pd.read_csv(bomy_path)
-    else:
-        bomy = pd.DataFrame(columns=bomy_cols)
-
-    if minimum_path and os.path.exists(minimum_path):
-        minimum = pd.read_csv(minimum_path)
-    else:
-        minimum = pd.DataFrame(columns=minimum_cols)
-    
-    if sprzedaz_path and os.path.exists(sprzedaz_path):
-        sprzedaz = pd.read_csv(sprzedaz_path)
-    else:
-        sprzedaz = pd.DataFrame()
-
-    if stany.empty:
-        # Return empty dataframes if there's no base data
+    # Wczytywanie danych, tworzenie pustych ramek w razie braku plików
+    try:
+        stany = pd.read_csv(stany_path) if stany_path and os.path.exists(stany_path) else pd.DataFrame()
+        bomy = pd.read_csv(bomy_path) if bomy_path and os.path.exists(bomy_path) else pd.DataFrame()
+        minimum = pd.read_csv(minimum_path) if minimum_path and os.path.exists(minimum_path) else pd.DataFrame()
+        sprzedaz = pd.read_csv(sprzedaz_path) if sprzedaz_path and os.path.exists(sprzedaz_path) else pd.DataFrame()
+    except Exception as e:
+        print(f"Błąd podczas wczytywania plików CSV: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
-    # 1. Process Bomy
-    if not bomy.empty:
+
+    if stany.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    # 1. Przetwarzanie BOM-ów
+    bomy_agg = pd.DataFrame()
+    if not bomy.empty and "Indeks" in bomy.columns and "Ilość" in bomy.columns:
         bomy_agg = bomy.groupby("Indeks")["Ilość"].sum().reset_index()
         bomy_agg = bomy_agg.rename(columns={"Ilość": "ilośćBom"})
-    else:
-        bomy_agg = pd.DataFrame(columns=["Indeks", "ilośćBom"])
 
-    # 2. Process Sprzedaz
+    # 2. Przetwarzanie Sprzedaży (UELASTYCZNIONE)
     monthly_sales_df = pd.DataFrame()
+    sprzedaz_agg = pd.DataFrame()
     if not sprzedaz.empty and 'GSM1' in sprzedaz.columns:
-        # Assume columns are named like 'Jan-23', 'Feb-23' etc.
-        # For this example, let's assume columns 3 to 14 are the 12 months of a year
-        sales_cols = sprzedaz.columns[3:15] 
+        # ZMIANA: Dynamiczne wykrywanie kolumn ze sprzedażą za pomocą wyrażenia regularnego
+        # Szuka kolumn w formacie 'Xxx-YY', np. 'Sty-23', 'Lut-24'
+        sales_cols = [col for col in sprzedaz.columns if re.match(r"^[A-Za-z]{3}-\d{2}$", col)]
         
-        # Calculate total sales for the summary table
-        sprzedaz_total = sprzedaz.copy()
-        sprzedaz_total["sprzedaż"] = sprzedaz_total[sales_cols].sum(axis=1)
-        sprzedaz_total = sprzedaz_total.rename(columns={"GSM1": "Indeks"})
-        sprzedaz_agg = sprzedaz_total[["Indeks", "sprzedaż"]]
-        
-        # Reshape data for time series forecasting
-        id_vars = ['GSM1', 'Name']
-        sprzedaz_long = pd.melt(sprzedaz, id_vars=id_vars, value_vars=sales_cols, var_name='month', value_name='sales')
-        sprzedaz_long.rename(columns={'GSM1': 'indeks'}, inplace=True)
-        
-        try:
-            sprzedaz_long['date'] = pd.to_datetime(sprzedaz_long['month'], format='%b-%y')
-        except ValueError:
-            sprzedaz_long['date'] = pd.to_datetime(sprzedaz_long['month'], errors='coerce')
-            if sprzedaz_long['date'].isnull().any():
-                num_months = len(sales_cols)
-                dates = pd.date_range(start='2023-01-01', periods=num_months, freq='MS')
-                date_map = {col: date for col, date in zip(sales_cols, dates)}
-                sprzedaz_long['date'] = sprzedaz_long['month'].map(date_map)
+        if sales_cols:
+            print(f"Wykryto kolumny sprzedaży: {sales_cols}")
+            # Obliczanie sumy sprzedaży
+            sprzedaz_total = sprzedaz.copy()
+            sprzedaz_total["sprzedaż"] = sprzedaz_total[sales_cols].sum(axis=1)
+            sprzedaz_total = sprzedaz_total.rename(columns={"GSM1": "Indeks"})
+            sprzedaz_agg = sprzedaz_total[["Indeks", "sprzedaż"]]
+            
+            # Przekształcanie danych do prognozowania
+            id_vars = ['GSM1', 'Name']
+            # Upewnij się, że kolumny do identyfikacji istnieją
+            id_vars = [v for v in id_vars if v in sprzedaz.columns] 
+            sprzedaz_long = pd.melt(sprzedaz, id_vars=id_vars, value_vars=sales_cols, var_name='month', value_name='sales')
+            sprzedaz_long.rename(columns={'GSM1': 'indeks'}, inplace=True)
+            
+            # Konwersja daty z obsługą błędów
+            try:
+                sprzedaz_long['date'] = pd.to_datetime(sprzedaz_long['month'], format='%b-%y', errors='coerce')
+            except Exception: # Obsługa różnych lokalizacji (np. polskich nazw miesięcy)
+                 sprzedaz_long['date'] = pd.to_datetime(sprzedaz_long['month'], errors='coerce')
 
-        monthly_sales_df = sprzedaz_long[['indeks', 'date', 'sales']].dropna(subset=['date'])
-
-    else:
-        sprzedaz_agg = pd.DataFrame(columns=["Indeks", "sprzedaż"])
+            monthly_sales_df = sprzedaz_long[['indeks', 'date', 'sales']].dropna(subset=['date'])
+        else:
+            print("Ostrzeżenie: Nie znaleziono kolumn pasujących do formatu sprzedaży (np. 'Sty-23').")
 
     # 3. Fuzzy Match
-    stany_names = stany["Name"].unique()
-    bom_names = bomy["Nazwa"].unique() if not bomy.empty else []
-    mapping = fuzzy_match(bom_names, stany_names)
+    if "Name" in stany.columns and "Nazwa" in bomy.columns:
+        stany_names = stany["Name"].unique()
+        bom_names = bomy["Nazwa"].unique()
+        mapping = fuzzy_match(bom_names, stany_names)
+    else:
+        mapping = {}
 
-    # 4. Merge DataFrames
-    df = pd.merge(stany, bomy_agg, on="Indeks", how="left")
+    # 4. Łączenie Danych
+    df = stany.copy()
+    if not bomy_agg.empty:
+        df = pd.merge(df, bomy_agg, on="Indeks", how="left")
     if not minimum.empty:
         df = pd.merge(df, minimum, on="Indeks", how="left")
     if not sprzedaz_agg.empty:
         df = pd.merge(df, sprzedaz_agg, on="Indeks", how="left")
 
-    df["ilośćBom"] = df["ilośćBom"].fillna(0).astype(int)
-    if "Minimum" in df.columns:
-        df["Minimum"] = df["Minimum"].fillna(0).astype(int)
-    else:
-        df["Minimum"] = 0
-    if "sprzedaż" in df.columns:
-        df["sprzedaż"] = df["sprzedaż"].fillna(0).astype(int)
-    else:
-        df["sprzedaż"] = 0
-
-    # 5. Calculate Alert Status
-    conditions = [
-        df["Ilość na stanie"] == 0,
-        df["Ilość na stanie"] < df["Minimum"],
-    ]
-    choices = [
-        "Brak produktu – pilnie BOM!",
-        "Stan poniżej minimum – zleć BOM!",
-    ]
-    df["alert"] = np.select(conditions, choices, default="OK")
-
-    # 6. Add other columns
-    df["bom"] = df["ilośćBom"].apply(lambda x: "TAK" if x > 0 else "NIE")
-    df["match"] = df["Name"].map(mapping).fillna("-")
-
-    # 7. Final selection and renaming
-    df = df.rename(columns={
+    # Czyszczenie i przygotowanie finalnych kolumn
+    df.rename(columns={
         "Indeks": "indeks",
         "Name": "nazwa",
         "Ilość na stanie": "stan",
         "Minimum": "minimum"
-    })
-    
-    final_cols = ["indeks", "nazwa", "stan", "minimum", "bom", "ilośćBom", "sprzedaż", "alert", "match"]
-    for col in final_cols:
-        if col not in df.columns:
-            df[col] = "-" if col in ["indeks", "nazwa", "bom", "alert", "match"] else 0
-            
-    df = df[final_cols]
+    }, inplace=True)
 
-    return df, monthly_sales_df
+    # Upewnienie się, że kluczowe kolumny istnieją i mają odpowiedni typ
+    final_cols_spec = {
+        "indeks": "-", "nazwa": "-", "stan": 0, "minimum": 0, 
+        "ilośćBom": 0, "sprzedaż": 0, "bom": "NIE", "alert": "OK", "match": "-"
+    }
+    for col, default_value in final_cols_spec.items():
+        if col not in df.columns:
+            df[col] = default_value
+        else:
+            if pd.api.types.is_numeric_dtype(default_value):
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(type(default_value))
+
+    # Obliczanie statusu alertu
+    if "stan" in df.columns and "minimum" in df.columns:
+        conditions = [
+            df["stan"] <= 0,
+            df["stan"] < df["minimum"],
+        ]
+        choices = [
+            "Brak produktu – pilnie BOM!",
+            "Stan poniżej minimum – zleć BOM!",
+        ]
+        df["alert"] = np.select(conditions, choices, default="OK")
+    
+    if "ilośćBom" in df.columns:
+        df["bom"] = df["ilośćBom"].apply(lambda x: "TAK" if x > 0 else "NIE")
+        
+    if "nazwa" in df.columns and mapping:
+         df["match"] = df["nazwa"].map(mapping).fillna("-")
+
+    return df[list(final_cols_spec.keys())], monthly_sales_df
